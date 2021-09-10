@@ -1,22 +1,16 @@
 /****************************************************************************
 *
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
+*    Copyright (c) 2005 - 2012 by Vivante Corp.  All rights reserved.
 *
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*    The material in this file is confidential and contains trade secrets
+*    of Vivante Corporation. This is proprietary information owned by
+*    Vivante Corporation. No part of this work may be disclosed,
+*    reproduced, copied, transmitted, or used in any way for any purpose,
+*    without the express written permission of Vivante Corporation.
 *
 *****************************************************************************/
+
+
 
 
 #ifndef __gc_hal_kernel_buffer_h_
@@ -72,22 +66,22 @@ typedef struct _gcsSTATE_DELTA
     /* Number of states currently stored in the record array. */
     gctUINT                     recordCount;
 
-    /* Record array; holds all modified states in gcsSTATE_DELTA_RECORD. */
-    gctUINT64                   recordArray;
+    /* Record array; holds all modified states. */
+    gcsSTATE_DELTA_RECORD_PTR   recordArray;
 
     /* Map entry ID is used for map entry validation. If map entry ID does not
        match the main state delta ID, the entry and the corresponding state are
        considered not in use. */
-    gctUINT64                   mapEntryID;
+    gctUINT_PTR                 mapEntryID;
     gctUINT                     mapEntryIDSize;
 
     /* If the map entry ID matches the main state delta ID, index points to
        the state record in the record array. */
-    gctUINT64                   mapEntryIndex;
+    gctUINT_PTR                 mapEntryIndex;
 
-    /* Previous and next state deltas in gcsSTATE_DELTA. */
-    gctUINT64                   prev;
-    gctUINT64                   next;
+    /* Previous and next state deltas. */
+    gcsSTATE_DELTA_PTR          prev;
+    gcsSTATE_DELTA_PTR          next;
 }
 gcsSTATE_DELTA;
 
@@ -107,38 +101,38 @@ struct _gcoCMDBUF
     gctBOOL                     usingFilterBlit;
     gctBOOL                     usingPalette;
 
-    /* Physical address of command buffer. Just a name. */
-    gctUINT32                   physical;
+    /* Physical address of command buffer. */
+    gctPHYS_ADDR                physical;
 
     /* Logical address of command buffer. */
-    gctUINT64                   logical;
+    gctPOINTER                  logical;
 
     /* Number of bytes in command buffer. */
-    gctUINT                     bytes;
+    gctSIZE_T                   bytes;
 
     /* Start offset into the command buffer. */
-    gctUINT                     startOffset;
+    gctUINT32                   startOffset;
 
     /* Current offset into the command buffer. */
-    gctUINT                     offset;
+    gctUINT32                   offset;
 
     /* Number of free bytes in command buffer. */
-    gctUINT                     free;
+    gctSIZE_T                   free;
 
     /* Location of the last reserved area. */
-    gctUINT64                   lastReserve;
+    gctPOINTER                  lastReserve;
     gctUINT                     lastOffset;
 
 #if gcdSECURE_USER
     /* Hint array for the current command buffer. */
     gctUINT                     hintArraySize;
-    gctUINT64                   hintArray;
-    gctUINT64                   hintArrayTail;
+    gctUINT32_PTR               hintArray;
+    gctUINT32_PTR               hintArrayTail;
 #endif
 
 #if gcmIS_DEBUG(gcdDEBUG_CODE)
     /* Last load state command location and hardware address. */
-    gctUINT64                   lastLoadStatePtr;
+    gctUINT32_PTR               lastLoadStatePtr;
     gctUINT32                   lastLoadStateAddress;
     gctUINT32                   lastLoadStateCount;
 #endif
@@ -146,8 +140,8 @@ struct _gcoCMDBUF
 
 typedef struct _gcsQUEUE
 {
-    /* Pointer to next gcsQUEUE structure in gcsQUEUE. */
-    gctUINT64                   next;
+    /* Pointer to next gcsQUEUE structure. */
+    gcsQUEUE_PTR                next;
 
     /* Event information. */
     gcsHAL_INTERFACE            iface;

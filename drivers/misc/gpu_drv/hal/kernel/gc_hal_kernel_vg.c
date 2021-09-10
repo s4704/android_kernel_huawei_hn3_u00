@@ -1,22 +1,16 @@
 /****************************************************************************
 *
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
+*    Copyright (c) 2005 - 2012 by Vivante Corp.  All rights reserved.
 *
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*    The material in this file is confidential and contains trade secrets
+*    of Vivante Corporation. This is proprietary information owned by
+*    Vivante Corporation. No part of this work may be disclosed,
+*    reproduced, copied, transmitted, or used in any way for any purpose,
+*    without the express written permission of Vivante Corporation.
 *
 *****************************************************************************/
+
+
 
 
 #include "gc_hal_kernel_precomp.h"
@@ -386,11 +380,6 @@ gceSTATUS gckVGKERNEL_Dispatch(
     gcsHAL_INTERFACE * kernelInterface = Interface;
     gcuVIDMEM_NODE_PTR node;
     gctUINT32 processID;
-    gckKERNEL kernel = Kernel;
-    gctPOINTER info = gcvNULL;
-    gctPHYS_ADDR physical = gcvNULL;
-    gctPOINTER logical = gcvNULL;
-    gctSIZE_T bytes = 0;
 
     gcmkHEADER_ARG("Kernel=0x%x Interface=0x%x ", Kernel, Interface);
 
@@ -430,78 +419,45 @@ gceSTATUS gckVGKERNEL_Dispatch(
             ));
         break;
     case gcvHAL_ALLOCATE_NON_PAGED_MEMORY:
-        bytes = (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes;
         /* Allocate non-paged memory. */
         gcmkERR_BREAK(gckOS_AllocateContiguous(
             Kernel->os,
             gcvTRUE,
-            &bytes,
-            &physical,
-            &logical
+            &kernelInterface->u.AllocateNonPagedMemory.bytes,
+            &kernelInterface->u.AllocateNonPagedMemory.physical,
+            &kernelInterface->u.AllocateNonPagedMemory.logical
             ));
-
-        kernelInterface->u.AllocateNonPagedMemory.bytes    = bytes;
-        kernelInterface->u.AllocateNonPagedMemory.logical  = gcmPTR_TO_UINT64(logical);
-        kernelInterface->u.AllocateNonPagedMemory.physical = gcmPTR_TO_NAME(physical);
         break;
 
     case gcvHAL_FREE_NON_PAGED_MEMORY:
-        physical = gcmNAME_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.physical);
-
-        /* Unmap user logical out of physical memory first. */
-        gcmkERR_BREAK(gckOS_UnmapUserLogical(
-            Kernel->os,
-            physical,
-            (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes,
-            gcmUINT64_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.logical)
-            ));
-
         /* Free non-paged memory. */
         gcmkERR_BREAK(gckOS_FreeNonPagedMemory(
             Kernel->os,
-            (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes,
-            physical,
-            gcmUINT64_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.logical)
+            kernelInterface->u.AllocateNonPagedMemory.bytes,
+            kernelInterface->u.AllocateNonPagedMemory.physical,
+            kernelInterface->u.AllocateNonPagedMemory.logical
             ));
-
-        gcmRELEASE_NAME(kernelInterface->u.AllocateNonPagedMemory.physical);
         break;
 
     case gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY:
-        bytes = (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes;
         /* Allocate contiguous memory. */
         gcmkERR_BREAK(gckOS_AllocateContiguous(
             Kernel->os,
             gcvTRUE,
-            &bytes,
-            &physical,
-            &logical
+            &kernelInterface->u.AllocateNonPagedMemory.bytes,
+            &kernelInterface->u.AllocateNonPagedMemory.physical,
+            &kernelInterface->u.AllocateNonPagedMemory.logical
             ));
-
-        kernelInterface->u.AllocateNonPagedMemory.bytes    = bytes;
-        kernelInterface->u.AllocateNonPagedMemory.logical  = gcmPTR_TO_UINT64(logical);
-        kernelInterface->u.AllocateNonPagedMemory.physical = gcmPTR_TO_NAME(physical);
         break;
 
     case gcvHAL_FREE_CONTIGUOUS_MEMORY:
-        physical = gcmNAME_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.physical);
-        /* Unmap user logical out of physical memory first. */
-        gcmkERR_BREAK(gckOS_UnmapUserLogical(
-            Kernel->os,
-            physical,
-            (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes,
-            gcmUINT64_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.logical)
-            ));
-
         /* Free contiguous memory. */
         gcmkERR_BREAK(gckOS_FreeContiguous(
             Kernel->os,
-            physical,
-            gcmUINT64_TO_PTR(kernelInterface->u.AllocateNonPagedMemory.logical),
-            (gctSIZE_T) kernelInterface->u.AllocateNonPagedMemory.bytes
+            kernelInterface->u.AllocateNonPagedMemory.physical,
+            kernelInterface->u.AllocateNonPagedMemory.logical,
+            kernelInterface->u.AllocateNonPagedMemory.bytes
             ));
-
-        gcmRELEASE_NAME(kernelInterface->u.AllocateNonPagedMemory.physical);
         break;
 
     case gcvHAL_ALLOCATE_VIDEO_MEMORY:
@@ -543,10 +499,8 @@ gceSTATUS gckVGKERNEL_Dispatch(
                 bytes,
                 64,
                 kernelInterface->u.AllocateVideoMemory.type,
-                &node
+                &kernelInterface->u.AllocateVideoMemory.node
                 ));
-
-            kernelInterface->u.AllocateVideoMemory.node = gcmPTR_TO_UINT64(node);
         }
         break;
 
@@ -558,23 +512,14 @@ gceSTATUS gckVGKERNEL_Dispatch(
             kernelInterface->u.AllocateLinearVideoMemory.bytes,
             kernelInterface->u.AllocateLinearVideoMemory.alignment,
             kernelInterface->u.AllocateLinearVideoMemory.type,
-            &node
+            &kernelInterface->u.AllocateLinearVideoMemory.node
             ));
-
-        gcmkERR_BREAK(gckKERNEL_AddProcessDB(Kernel,
-           processID, gcvDB_VIDEO_MEMORY,
-           node,
-           gcvNULL,
-           kernelInterface->u.AllocateLinearVideoMemory.bytes
-           ));
-
-        kernelInterface->u.AllocateLinearVideoMemory.node = gcmPTR_TO_UINT64(node);
         break;
 
     case gcvHAL_FREE_VIDEO_MEMORY:
-        node = gcmUINT64_TO_PTR(Interface->u.FreeVideoMemory.node);
 #ifdef __QNXNTO__
         /* Unmap the video memory */
+        node = Interface->u.FreeVideoMemory.node;
 
         if ((node->VidMem.memory->object.type == gcvOBJ_VIDMEM) &&
             (node->VidMem.logical != gcvNULL))
@@ -589,35 +534,27 @@ gceSTATUS gckVGKERNEL_Dispatch(
 
         /* Free video memory. */
         gcmkERR_BREAK(gckVIDMEM_Free(
-            node
+            Interface->u.FreeVideoMemory.node
             ));
-
-        gcmkERR_BREAK(gckKERNEL_RemoveProcessDB(
-            Kernel,
-            processID, gcvDB_VIDEO_MEMORY,
-            node
-            ));
-
         break;
 
     case gcvHAL_MAP_MEMORY:
         /* Map memory. */
         gcmkERR_BREAK(gckKERNEL_MapMemory(
             Kernel,
-            gcmINT2PTR(kernelInterface->u.MapMemory.physical),
-            (gctSIZE_T) kernelInterface->u.MapMemory.bytes,
-            &logical
+            kernelInterface->u.MapMemory.physical,
+            kernelInterface->u.MapMemory.bytes,
+            &kernelInterface->u.MapMemory.logical
             ));
-        kernelInterface->u.MapMemory.logical = gcmPTR_TO_UINT64(logical);
         break;
 
     case gcvHAL_UNMAP_MEMORY:
         /* Unmap memory. */
         gcmkERR_BREAK(gckKERNEL_UnmapMemory(
             Kernel,
-            gcmINT2PTR(kernelInterface->u.MapMemory.physical),
-            (gctSIZE_T) kernelInterface->u.MapMemory.bytes,
-            gcmUINT64_TO_PTR(kernelInterface->u.MapMemory.logical)
+            kernelInterface->u.MapMemory.physical,
+            kernelInterface->u.MapMemory.bytes,
+            kernelInterface->u.MapMemory.logical
             ));
         break;
 
@@ -625,38 +562,32 @@ gceSTATUS gckVGKERNEL_Dispatch(
         /* Map user memory to DMA. */
         gcmkERR_BREAK(gckOS_MapUserMemory(
             Kernel->os,
-            gcvCORE_VG,
-            gcmUINT64_TO_PTR(kernelInterface->u.MapUserMemory.memory),
-            kernelInterface->u.MapUserMemory.physical,
-            (gctSIZE_T) kernelInterface->u.MapUserMemory.size,
-            &info,
+            kernelInterface->u.MapUserMemory.memory,
+            kernelInterface->u.MapUserMemory.size,
+            &kernelInterface->u.MapUserMemory.info,
             &kernelInterface->u.MapUserMemory.address
             ));
-
-        kernelInterface->u.MapUserMemory.info = gcmPTR_TO_NAME(info);
         break;
 
     case gcvHAL_UNMAP_USER_MEMORY:
         /* Unmap user memory. */
         gcmkERR_BREAK(gckOS_UnmapUserMemory(
             Kernel->os,
-            gcvCORE_VG,
-            gcmUINT64_TO_PTR(kernelInterface->u.UnmapUserMemory.memory),
-            (gctSIZE_T) kernelInterface->u.UnmapUserMemory.size,
-            gcmNAME_TO_PTR(kernelInterface->u.UnmapUserMemory.info),
+            kernelInterface->u.UnmapUserMemory.memory,
+            kernelInterface->u.UnmapUserMemory.size,
+            kernelInterface->u.UnmapUserMemory.info,
             kernelInterface->u.UnmapUserMemory.address
             ));
         break;
     case gcvHAL_LOCK_VIDEO_MEMORY:
-        node = gcmUINT64_TO_PTR(Interface->u.LockVideoMemory.node);
-
         /* Lock video memory. */
         gcmkERR_BREAK(
             gckVIDMEM_Lock(Kernel,
-                           node,
+                           Interface->u.LockVideoMemory.node,
 						   gcvFALSE,
                            &Interface->u.LockVideoMemory.address));
 
+        node = Interface->u.LockVideoMemory.node;
         if (node->VidMem.memory->object.type == gcvOBJ_VIDMEM)
         {
             /* Map video memory address into user space. */
@@ -672,20 +603,19 @@ gceSTATUS gckVGKERNEL_Dispatch(
                                          &node->VidMem.logical));
         }
 
-        Interface->u.LockVideoMemory.memory = gcmPTR_TO_UINT64(node->VidMem.logical);
+        Interface->u.LockVideoMemory.memory = node->VidMem.logical;
 #else
             gcmkERR_BREAK(
                 gckKERNEL_MapVideoMemoryEx(Kernel,
                                          gcvCORE_VG,
                                          FromUser,
                                          Interface->u.LockVideoMemory.address,
-                                         &logical));
-            Interface->u.LockVideoMemory.memory = gcmPTR_TO_UINT64(logical);
+                                         &Interface->u.LockVideoMemory.memory));
 #endif
         }
         else
         {
-            Interface->u.LockVideoMemory.memory = gcmPTR_TO_UINT64(node->Virtual.logical);
+            Interface->u.LockVideoMemory.memory = node->Virtual.logical;
 
             /* Success. */
             status = gcvSTATUS_OK;
@@ -694,19 +624,13 @@ gceSTATUS gckVGKERNEL_Dispatch(
 #if gcdSECURE_USER
         /* Return logical address as physical address. */
         Interface->u.LockVideoMemory.address =
-            (gctUINT32)(Interface->u.LockVideoMemory.memory);
+            gcmPTR2INT(Interface->u.LockVideoMemory.memory);
 #endif
-        gcmkERR_BREAK(
-            gckKERNEL_AddProcessDB(Kernel,
-                                   processID, gcvDB_VIDEO_MEMORY_LOCKED,
-                                   node,
-                                   gcvNULL,
-                                   0));
         break;
 
     case gcvHAL_UNLOCK_VIDEO_MEMORY:
         /* Unlock video memory. */
-        node = gcmUINT64_TO_PTR(Interface->u.UnlockVideoMemory.node);
+        node = Interface->u.UnlockVideoMemory.node;
 
 #if gcdSECURE_USER
         /* Save node information before it disappears. */
@@ -739,16 +663,6 @@ gceSTATUS gckVGKERNEL_Dispatch(
                                                           bytes));
         }
 #endif
-
-        if (Interface->u.UnlockVideoMemory.asynchroneous == gcvFALSE)
-        {
-            /* There isn't a event to unlock this node, remove record now */
-            gcmkERR_BREAK(
-                    gckKERNEL_RemoveProcessDB(Kernel,
-                        processID, gcvDB_VIDEO_MEMORY_LOCKED,
-                        node));
-        }
-
         break;
     case gcvHAL_USER_SIGNAL:
 #if !USE_NEW_LINUX_SIGNAL
@@ -808,10 +722,10 @@ gceSTATUS gckVGKERNEL_Dispatch(
         /* Commit a command and context buffer. */
         gcmkERR_BREAK(gckVGCOMMAND_Commit(
             Kernel->vg->command,
-            gcmUINT64_TO_PTR(kernelInterface->u.VGCommit.context),
-            gcmUINT64_TO_PTR(kernelInterface->u.VGCommit.queue),
+            kernelInterface->u.VGCommit.context,
+            kernelInterface->u.VGCommit.queue,
             kernelInterface->u.VGCommit.entryCount,
-            gcmUINT64_TO_PTR(kernelInterface->u.VGCommit.taskTable)
+            kernelInterface->u.VGCommit.taskTable
             ));
         break;
     case gcvHAL_VERSION:

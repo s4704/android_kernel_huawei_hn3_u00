@@ -1,24 +1,3 @@
-/****************************************************************************
-*
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
-*
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-*
-*****************************************************************************/
-
-
 #ifdef MODULE
 #include <linux/module.h>
 #endif
@@ -43,28 +22,28 @@
 #include <linux/completion.h>
 #include "gc_hal_kernel_linux.h"
 
-/*
+/* 
    Prequsite:
 
    1) Debugfs feature must be enabled in the kernel.
        1.a) You can enable this, in the compilation of the uImage, all you have to do is, In the "make menuconfig" part,
        you have to enable the debugfs in the kernel hacking part of the menu.
-
+  
    HOW TO USE:
-   1) insert the driver with the following option logFileSize, Ex: insmod galcore.ko ...... logFileSize=10240
+   1) insert the driver with the following option logFileSize, Ex: insmod galcore.ko ...... logFileSize=10240 
    This gives a circular buffer of 10 MB
-
+   
    2)Usually after inserting the driver, the debug file system is mounted under /sys/kernel/debug/
 
         2.a)If the debugfs is not mounted, you must do "mount -t debugfs none /sys/kernel/debug"
-
+   	
    3) To read what is being printed in the debugfs file system:
         Ex : cat /sys/kernel/debug/gpu/galcore_trace
 
    4)To write into the debug file system from user side :
         Ex: echo "hello" > cat /sys/kernel/debug/gpu/galcore_trace
 
-   5)To write into debugfs from kernel side, Use the function called gckDebugFileSystemPrint
+   5)To write into debugfs from kernel side, Use the function called gckDEBUGFS_Print
 
 
    USECASE Kernel Dump:
@@ -81,7 +60,7 @@
     4) insmod it with the logFileSize option
     5) Run an application
     6) You can get the dump by cat /sys/kernel/debug/gpu/galcore_trace
-
+   
  */
 
 /**/
@@ -89,7 +68,7 @@ typedef va_list gctDBGARGS ;
 #define gcmkARGS_START(argument, pointer)   va_start(argument, pointer)
 #define gcmkARGS_END(argument)              	      va_end(argument)
 
-#define gcmkDBGFSPRINT(ArgumentSize, Message) \
+#define gcmkDEBUGFS_PRINT(ArgumentSize, Message) \
   { \
 	  gctDBGARGS __arguments__; \
 	  gcmkARGS_START(__arguments__, Message); \
@@ -97,8 +76,8 @@ typedef va_list gctDBGARGS ;
 	  gcmkARGS_END(__arguments__); \
   }
 
-/*Debug File System Node Struct*/
-struct _gcsDebugFileSystemNode
+/* Debug File System Node Struct. */
+struct _gcsDEBUGFS_Node
 {
     /*wait queues for read and write operations*/
 #if defined(DECLARE_WAIT_QUEUE_HEAD)
@@ -115,8 +94,8 @@ struct _gcsDebugFileSystemNode
     int read_point ; /* Offset in circ. buffer of oldest data */
     int write_point ; /* Offset in circ. buffer of newest data */
     int offset ; /* Byte number of read_point in the stream */
-    struct _gcsDebugFileSystemNode *next ;
-} ;
+    struct _gcsDEBUGFS_Node *next ;
+};
 
 /* amount of data in the queue */
 #define gcmkNODE_QLEN(node) ( (node)->write_point >= (node)->read_point ? \
@@ -135,23 +114,23 @@ struct _gcsDebugFileSystemNode
 #define gcmkMIN(x, y) ((x) < (y) ? (x) : y)
 
 /*Debug File System Struct*/
-typedef struct _gcsDebugFileSystem
+typedef struct _gcsDEBUGFS_
 {
-    gcsDebugFileSystemNode* linkedlist ;
-    gcsDebugFileSystemNode* currentNode ;
+    gcsDEBUGFS_Node* linkedlist ;
+    gcsDEBUGFS_Node* currentNode ;
     int isInited ;
-} gcsDebugFileSystem ;
+} gcsDEBUGFS_ ;
 
 
 /*debug file system*/
-static gcsDebugFileSystem gc_dbgfs ;
+static gcsDEBUGFS_ gc_dbgfs ;
 
 
 
 /*******************************************************************************
  **
  **		READ & WRITE FUNCTIONS (START)
- **
+ **		  
  *******************************************************************************/
 
 /*******************************************************************************
@@ -159,15 +138,15 @@ static gcsDebugFileSystem gc_dbgfs ;
  **  _ReadFromNode
  **
  **	1) reading bytes out of a circular buffer with wraparound.
- **	2)returns caddr_t, pointer to data read, which the caller must free.
+ **	2)returns caddr_t, pointer to data read, which the caller must free.  
  **	3) length is (a pointer to) the number of bytes to be read, which will be set by this function to
- **	    be the number of bytes actually returned
+ **	    be the number of bytes actually returned 
  **
  *******************************************************************************/
 static caddr_t
 _ReadFromNode (
-                gcsDebugFileSystemNode* Node ,
-                size_t *Length ,
+                gcsDEBUGFS_Node* Node ,
+                int *Length ,
                 loff_t *Offset
                 )
 {
@@ -222,13 +201,13 @@ _ReadFromNode (
  **
  **  _WriteToNode
  **
- ** 1) writes to a circular buffer with wraparound.
+ ** 1) writes to a circular buffer with wraparound. 
  ** 2)in case of an overflow, it overwrites the oldest unread data.
  **
  *********************************************************************************/
 static void
 _WriteToNode (
-               gcsDebugFileSystemNode* Node ,
+               gcsDEBUGFS_Node* Node ,
                caddr_t Buf ,
                int Length
                )
@@ -275,7 +254,7 @@ _WriteToNode (
 /*******************************************************************************
  **
  ** 		PRINTING UTILITY (START)
- **
+ ** 		
  *******************************************************************************/
 
 /*******************************************************************************
@@ -309,7 +288,7 @@ _GetArgumentSize (
  *******************************************************************************/
 static ssize_t
 _AppendString (
-                IN gcsDebugFileSystemNode* Node ,
+                IN gcsDEBUGFS_Node* Node ,
                 IN gctCONST_STRING String ,
                 IN int Length
                 )
@@ -355,6 +334,7 @@ _DebugFSPrint (
     len = vsnprintf ( buffer , sizeof (buffer ) , Message , *( va_list * ) & Arguments ) ;
     buffer[len] = '\0' ;
 
+    /* Add end-of-line if missing. */
     if ( buffer[len - 1] != '\n' )
     {
         buffer[len ++] = '\n' ;
@@ -368,7 +348,7 @@ _DebugFSPrint (
 /*******************************************************************************
  **
  **                     LINUX SYSTEM FUNCTIONS (START)
- **
+ **		  
  *******************************************************************************/
 
 /*******************************************************************************
@@ -377,12 +357,12 @@ _DebugFSPrint (
  **  	returns a	pointer to the structure if found, NULL if not found
  **
  *******************************************************************************/
-static gcsDebugFileSystemNode*
+static gcsDEBUGFS_Node*
 _GetNodeInfo (
                IN struct inode *Inode
                )
 {
-    gcsDebugFileSystemNode* node ;
+    gcsDEBUGFS_Node* node ;
 
     if ( Inode == NULL )
         return NULL ;
@@ -409,7 +389,7 @@ _DebugFSRead (
 {
     int retval ;
     caddr_t data_to_return ;
-    gcsDebugFileSystemNode* node ;
+    gcsDEBUGFS_Node* node ;
     /* get the metadata about this emlog */
     if ( ( node = _GetNodeInfo ( file->f_dentry->d_inode ) ) == NULL )
     {
@@ -476,7 +456,7 @@ _DebugFSWrite (
 {
     caddr_t message = NULL ;
     int n ;
-    gcsDebugFileSystemNode*node ;
+    gcsDEBUGFS_Node*node ;
 
     /* get the metadata about this log */
     if ( ( node = _GetNodeInfo ( file->f_dentry->d_inode ) ) == NULL )
@@ -537,12 +517,12 @@ static const struct file_operations debugfs_operations = {
 /*******************************************************************************
  **
  **                             INTERFACE FUNCTIONS (START)
- **
+ **		  
  *******************************************************************************/
 
 /*******************************************************************************
  **
- **  gckDebugFileSystemIsEnabled
+ **  gckDEBUGFS_IsEnabled
  **
  **
  **  INPUT:
@@ -553,13 +533,13 @@ static const struct file_operations debugfs_operations = {
 
 
 gctINT
-gckDebugFileSystemIsEnabled ( void )
+gckDEBUGFS_IsEnabled ( void )
 {
     return gc_dbgfs.isInited ;
 }
 /*******************************************************************************
  **
- **  gckDebugFileSystemInitialize
+ **  gckDEBUGFS_Initialize
  **
  **
  **  INPUT:
@@ -569,7 +549,7 @@ gckDebugFileSystemIsEnabled ( void )
  *******************************************************************************/
 
 gctINT
-gckDebugFileSystemInitialize ( void )
+gckDEBUGFS_Initialize ( void )
 {
     if ( ! gc_dbgfs.isInited )
     {
@@ -581,7 +561,7 @@ gckDebugFileSystemInitialize ( void )
 }
 /*******************************************************************************
  **
- **  gckDebugFileSystemTerminate
+ **  gckDEBUGFS_Terminate
  **
  **
  **  INPUT:
@@ -591,17 +571,17 @@ gckDebugFileSystemInitialize ( void )
  *******************************************************************************/
 
 gctINT
-gckDebugFileSystemTerminate ( void )
+gckDEBUGFS_Terminate ( void )
 {
-    gcsDebugFileSystemNode * next = gcvNULL ;
-    gcsDebugFileSystemNode * temp = gcvNULL ;
+    gcsDEBUGFS_Node * next = gcvNULL ;
+    gcsDEBUGFS_Node * temp = gcvNULL ;
     if ( gc_dbgfs.isInited )
     {
         temp = gc_dbgfs.linkedlist ;
         while ( temp != gcvNULL )
         {
             next = temp->next ;
-            gckDebugFileSystemFreeNode ( temp ) ;
+            gckDEBUGFS_FreeNode ( temp ) ;
             kfree ( temp ) ;
             temp = next ;
         }
@@ -613,33 +593,33 @@ gckDebugFileSystemTerminate ( void )
 
 /*******************************************************************************
  **
- **  gckDebugFileSystemCreateNode
+ **  gckDEBUGFS_CreateNode
  **
  **
  **  INPUT:
  **
  **  OUTPUT:
  **
- **	 gckDebugFileSystemFreeNode * Device
- **		  Pointer to a variable receiving the gcsDebugFileSystemNode object pointer on
+ **	 gckDEBUGFS_FreeNode * Device
+ **		  Pointer to a variable receiving the gcsDEBUGFS_Node object pointer on
  **		  success.
  *********************************************************************************/
 
 gctINT
-gckDebugFileSystemCreateNode (
+gckDEBUGFS_CreateNode (
                                IN gctINT SizeInKB ,
                                IN gctCONST_STRING ParentName ,
                                IN gctCONST_STRING NodeName ,
-                               OUT gcsDebugFileSystemNode **Node
+                               OUT gcsDEBUGFS_Node **Node
                                )
 {
-    gcsDebugFileSystemNode*node ;
+    gcsDEBUGFS_Node*node ;
     /* allocate space for our metadata and initialize it */
-    if ( ( node = kmalloc ( sizeof (gcsDebugFileSystemNode ) , GFP_KERNEL ) ) == NULL )
+    if ( ( node = kmalloc ( sizeof (gcsDEBUGFS_Node ) , GFP_KERNEL ) ) == NULL )
         goto struct_malloc_failed ;
 
     /*Zero it out*/
-    memset ( node , 0 , sizeof (gcsDebugFileSystemNode ) ) ;
+    memset ( node , 0 , sizeof (gcsDEBUGFS_Node ) ) ;
 
     /*Init the sync primitives*/
 #if defined(DECLARE_WAIT_QUEUE_HEAD)
@@ -677,6 +657,9 @@ gckDebugFileSystemCreateNode (
     *Node = node ;
     return 0 ;
 
+#if 0
+other_failure: /* if we check for other errors later, jump here */
+#endif
     vfree ( node->data ) ;
 data_malloc_failed:
     kfree ( node ) ;
@@ -686,7 +669,7 @@ struct_malloc_failed:
 
 /*******************************************************************************
  **
- **  gckDebugFileSystemFreeNode
+ **  gckDEBUGFS_FreeNode
  **
  **
  **  INPUT:
@@ -695,12 +678,12 @@ struct_malloc_failed:
  **
  *******************************************************************************/
 void
-gckDebugFileSystemFreeNode (
-                             IN gcsDebugFileSystemNode * Node
+gckDEBUGFS_FreeNode (
+                             IN gcsDEBUGFS_Node * Node
                              )
 {
 
-    gcsDebugFileSystemNode **ptr ;
+    gcsDEBUGFS_Node **ptr ;
 
     if ( Node == NULL )
     {
@@ -740,7 +723,7 @@ gckDebugFileSystemFreeNode (
 
 /*******************************************************************************
  **
- **   gckDebugFileSystemSetCurrentNode
+ **   gckDEBUGFS_SetCurrentNode
  **
  **
  **  INPUT:
@@ -749,8 +732,8 @@ gckDebugFileSystemFreeNode (
  **
  *******************************************************************************/
 void
-gckDebugFileSystemSetCurrentNode (
-                                   IN gcsDebugFileSystemNode * Node
+gckDEBUGFS_SetCurrentNode (
+                                   IN gcsDEBUGFS_Node * Node
                                    )
 {
     gc_dbgfs.currentNode = Node ;
@@ -758,7 +741,7 @@ gckDebugFileSystemSetCurrentNode (
 
 /*******************************************************************************
  **
- **   gckDebugFileSystemGetCurrentNode
+ **   gckDEBUGFS_GetCurrentNode
  **
  **
  **  INPUT:
@@ -767,8 +750,8 @@ gckDebugFileSystemSetCurrentNode (
  **
  *******************************************************************************/
 void
-gckDebugFileSystemGetCurrentNode (
-                                   OUT gcsDebugFileSystemNode ** Node
+gckDEBUGFS_GetCurrentNode (
+                                   OUT gcsDEBUGFS_Node ** Node
                                    )
 {
     *Node = gc_dbgfs.currentNode ;
@@ -776,7 +759,7 @@ gckDebugFileSystemGetCurrentNode (
 
 /*******************************************************************************
  **
- **   gckDebugFileSystemPrint
+ **   gckDEBUGFS_Print
  **
  **
  **  INPUT:
@@ -785,10 +768,10 @@ gckDebugFileSystemGetCurrentNode (
  **
  *******************************************************************************/
 void
-gckDebugFileSystemPrint (
+gckDEBUGFS_Print (
                           IN gctCONST_STRING Message ,
                           ...
                           )
 {
-    gcmkDBGFSPRINT ( _GetArgumentSize ( Message ) , Message ) ;
+    gcmkDEBUGFS_PRINT ( _GetArgumentSize ( Message ) , Message ) ;
 }

@@ -1,22 +1,16 @@
 /****************************************************************************
 *
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
+*    Copyright (c) 2005 - 2012 by Vivante Corp.  All rights reserved.
 *
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*    The material in this file is confidential and contains trade secrets
+*    of Vivante Corporation. This is proprietary information owned by
+*    Vivante Corporation. No part of this work may be disclosed,
+*    reproduced, copied, transmitted, or used in any way for any purpose,
+*    without the express written permission of Vivante Corporation.
 *
 *****************************************************************************/
+
+
 
 
 #include "gc_hal_kernel_linux.h"
@@ -28,13 +22,12 @@
 
 #define _GC_OBJ_ZONE    gcvZONE_DEVICE
 
-#define DEBUG_FILE 			"galcore_trace"
-#define PARENT_FILE 		"gpu"
-
-
 #ifdef FLAREON
     static struct dove_gpio_irq_handler gc500_handle;
 #endif
+
+#define DEBUG_FILE "galcore_trace"
+#define PARENT_FILE "gpu"
 
 #define gcmIS_CORE_PRESENT(Device, Core) (Device->irqLines[Core] > 0)
 
@@ -260,6 +253,69 @@ static int threadRoutineVG(void *ctxt)
     }
 }
 
+#if gcdPOWEROFF_TIMEOUT
+/*
+** PM Thread Routine
+**/
+static int _threadRoutinePM(gckGALDEVICE Device, gckHARDWARE Hardware)
+{
+    gceCHIPPOWERSTATE state;
+
+    for(;;)
+    {
+        /* wait for idle */
+        gcmkVERIFY_OK(
+            gckOS_AcquireMutex(Device->os, Hardware->powerOffSema, gcvINFINITE));
+
+        /* We try to power off every 200 ms, until GPU is not idle */
+        do
+        {
+            if (Device->killThread == gcvTRUE)
+            {
+                /* The daemon exits. */
+                while (!kthread_should_stop())
+                {
+                    gckOS_Delay(Device->os, 1);
+                }
+                return 0;
+            }
+
+            gcmkVERIFY_OK(
+                gckHARDWARE_SetPowerManagementState(
+                    Hardware,
+                    gcvPOWER_OFF_TIMEOUT));
+
+            /* relax cpu powerOffTimeout before retry */
+            gckOS_Delay(Device->os, Hardware->powerOffTimeout);
+
+            gcmkVERIFY_OK(
+                gckHARDWARE_QueryPowerManagementState(Hardware, &state));
+        }
+        while (state == gcvPOWER_IDLE);
+    }
+}
+
+static int threadRoutinePM(void *ctxt)
+{
+    gckGALDEVICE device = (gckGALDEVICE) ctxt;
+    gckHARDWARE hardware = device->kernels[gcvCORE_MAJOR]->hardware;
+
+    return _threadRoutinePM(device, hardware);
+}
+
+static int threadRoutinePM_2D(void *ctxt)
+{
+#if 1
+    gckGALDEVICE device = (gckGALDEVICE) ctxt;
+    gckHARDWARE hardware = device->kernels[gcvCORE_2D]->hardware;
+
+    return _threadRoutinePM(device, hardware);
+#else
+    return 0;
+#endif
+}
+#endif
+
 /******************************************************************************\
 ******************************* gckGALDEVICE Code ******************************
 \******************************************************************************/
@@ -297,9 +353,7 @@ gckGALDEVICE_Construct(
     IN gctUINT32 PhysBaseAddr,
     IN gctUINT32 PhysSize,
     IN gctINT Signal,
-    IN gctUINT LogFileSize,
-    IN gctINT PowerManagement,
-    IN gctINT GpuProfiler,
+    IN gctUINT32 LogFileSize,
     OUT gckGALDEVICE *Device
     )
 {
@@ -314,7 +368,6 @@ gckGALDEVICE_Construct(
     gctINT32 i;
     gceHARDWARE_TYPE type;
     gckDB sharedDB = gcvNULL;
-    gckKERNEL kernel = gcvNULL;
 
     gcmkHEADER_ARG("IrqLine=%d RegisterMemBase=0x%08x RegisterMemSize=%u "
                    "IrqLine2D=%d RegisterMemBase2D=0x%08x RegisterMemSize2D=%u "
@@ -337,23 +390,22 @@ gckGALDEVICE_Construct(
 
     memset(device, 0, sizeof(struct _gckGALDEVICE));
 
-   device->dbgnode = gcvNULL;
-   if(LogFileSize != 0)
-   {
-	if(gckDebugFileSystemCreateNode(LogFileSize,PARENT_FILE,DEBUG_FILE,&(device->dbgnode)) != 0)
-	{
-		gcmkTRACE_ZONE(
-		gcvLEVEL_ERROR, gcvZONE_DRIVER,
-		"%s(%d): Failed to create  the debug file system  %s/%s \n",
-		__FUNCTION__, __LINE__,
-		PARENT_FILE, DEBUG_FILE
-		);
-	}
-	else
-	{
-		/*Everything is OK*/
-	 	gckDebugFileSystemSetCurrentNode(device->dbgnode);
-	}
+    device->dbgNode = gcvNULL;
+    if(LogFileSize != 0)
+    {
+        if(gckDEBUGFS_CreateNode(LogFileSize, PARENT_FILE, DEBUG_FILE, &device->dbgNode))
+        {
+            gcmkTRACE_ZONE(
+                    gcvLEVEL_ERROR, gcvZONE_DRIVER,
+                    "%s(%d): Failed to create  the debug file system  %s/%s \n",
+                    __FUNCTION__, __LINE__,
+                    PARENT_FILE, DEBUG_FILE
+                    );
+        }
+        else
+        {
+            gckDEBUGFS_SetCurrentNode(device->dbgNode);
+        }
     }
 
     if (IrqLine != -1)
@@ -378,7 +430,7 @@ gckGALDEVICE_Construct(
     device->requestedContiguousSize  = 0;
 
 
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         physical = device->requestedRegisterMemBases[i];
 
@@ -457,13 +509,6 @@ gckGALDEVICE_Construct(
             device->kernels[gcvCORE_MAJOR]->hardware, FastClear, Compression
             ));
 
-        gcmkONERROR(gckHARDWARE_SetPowerManagement(
-            device->kernels[gcvCORE_MAJOR]->hardware, PowerManagement
-            ));
-
-        gcmkONERROR(gckHARDWARE_SetGpuProfiler(
-            device->kernels[gcvCORE_MAJOR]->hardware, GpuProfiler
-            ));
 
 #if COMMAND_PROCESSOR_VERSION == 1
         /* Start the command queue. */
@@ -519,11 +564,6 @@ gckGALDEVICE_Construct(
             device
             ));
 
-        gcmkONERROR(gckHARDWARE_SetPowerManagement(
-            device->kernels[gcvCORE_2D]->hardware, PowerManagement
-            ));
-
-
 #if COMMAND_PROCESSOR_VERSION == 1
         /* Start the command queue. */
         gcmkONERROR(gckCOMMAND_Start(device->kernels[gcvCORE_2D]->command));
@@ -555,12 +595,6 @@ gckGALDEVICE_Construct(
             device->coreMapping[gcvHARDWARE_VG] = gcvCORE_VG;
         }
 
-
-        gcmkONERROR(gckVGHARDWARE_SetPowerManagement(
-            device->kernels[gcvCORE_VG]->vg->hardware,
-            PowerManagement
-            ));
-
 #endif
     }
     else
@@ -574,22 +608,19 @@ gckGALDEVICE_Construct(
     device->irqLines[gcvCORE_VG]    = IrqLineVG;
 
     /* Initialize the kernel thread semaphores. */
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         if (device->irqLines[i] != -1) sema_init(&device->semas[i], 0);
     }
 
     device->signal = Signal;
 
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         if (device->kernels[i] != gcvNULL) break;
     }
 
-    if (i == gcdMAX_GPU_COUNT)
-	{
-		gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
-	}
+    if (i == gcdCORE_COUNT) gcmkONERROR(gcvSTATUS_INVALID_ARGUMENT);
 
 #if gcdENABLE_VG
     if (i == gcvCORE_VG)
@@ -628,16 +659,6 @@ gckGALDEVICE_Construct(
     }
 
 
-    /* Grab the first availiable kernel */
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
-    {
-        if (device->irqLines[i] != -1)
-        {
-            kernel = device->kernels[i];
-            break;
-        }
-    }
-
     /* Set up the internal memory region. */
     if (device->internalSize > 0)
     {
@@ -663,8 +684,7 @@ gckGALDEVICE_Construct(
                 gcmkONERROR(gcvSTATUS_OUT_OF_RESOURCES);
             }
 
-            device->internalPhysical = (gctPHYS_ADDR)(gctUINTPTR_T) physical;
-            device->internalPhysicalName = gcmPTR_TO_NAME(device->internalPhysical);
+            device->internalPhysical = (gctPHYS_ADDR) physical;
             physical += device->internalSize;
         }
     }
@@ -723,7 +743,6 @@ gckGALDEVICE_Construct(
 
                 if (gcmIS_SUCCESS(status))
                 {
-                    device->contiguousPhysicalName = gcmPTR_TO_NAME(device->contiguousPhysical);
                     status = gckVIDMEM_Construct(
                         device->os,
                         physAddr | device->systemMemoryBaseAddress,
@@ -744,7 +763,6 @@ gckGALDEVICE_Construct(
                         device->contiguousPhysical
                         ));
 
-                    gcmRELEASE_NAME(device->contiguousPhysicalName);
                     device->contiguousBase     = gcvNULL;
                     device->contiguousPhysical = gcvNULL;
                 }
@@ -764,7 +782,7 @@ gckGALDEVICE_Construct(
             /* Create the contiguous memory heap. */
             status = gckVIDMEM_Construct(
                 device->os,
-                ContiguousBase | device->systemMemoryBaseAddress,
+                (ContiguousBase - device->baseAddress) | device->systemMemoryBaseAddress,
                  ContiguousSize - device->externalSize,
                 64, BankSize,
                 &device->contiguousVidMem
@@ -816,8 +834,7 @@ gckGALDEVICE_Construct(
                 }
 #endif
 
-                device->contiguousPhysical = gcvNULL;
-                device->contiguousPhysicalName = 0;
+                device->contiguousPhysical = (gctPHYS_ADDR) ContiguousBase;
                 device->contiguousSize     = ContiguousSize;
                 device->contiguousMapped   = gcvTRUE;
             }
@@ -862,39 +879,12 @@ gckGALDEVICE_Destroy(
 {
     gctINT i;
     gceSTATUS status = gcvSTATUS_OK;
-    gckKERNEL kernel = gcvNULL;
 
     gcmkHEADER_ARG("Device=0x%x", Device);
 
     if (Device != gcvNULL)
     {
-        /* Grab the first availiable kernel */
-        for (i = 0; i < gcdMAX_GPU_COUNT; i++)
-        {
-            if (Device->irqLines[i] != -1)
-            {
-                kernel = Device->kernels[i];
-                break;
-            }
-        }
-        if (Device->internalPhysicalName != 0)
-        {
-            gcmRELEASE_NAME(Device->internalPhysicalName);
-            Device->internalPhysicalName = 0;
-        }
-        if (Device->externalPhysicalName != 0)
-        {
-            gcmRELEASE_NAME(Device->externalPhysicalName);
-            Device->externalPhysicalName = 0;
-        }
-        if (Device->contiguousPhysicalName != 0)
-        {
-            gcmRELEASE_NAME(Device->contiguousPhysicalName);
-            Device->contiguousPhysicalName = 0;
-        }
-
-
-        for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+        for (i = 0; i < gcdCORE_COUNT; i++)
         {
             if (Device->kernels[i] != gcvNULL)
             {
@@ -977,16 +967,7 @@ gckGALDEVICE_Destroy(
             }
         }
 
-	{
-	    if(gckDebugFileSystemIsEnabled())
-	    {
-		 gckDebugFileSystemFreeNode(Device->dbgnode);
-		 kfree(Device->dbgnode);
-		 Device->dbgnode = gcvNULL;
-	    }
-	}
-
-        for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+        for (i = 0; i < gcdCORE_COUNT; i++)
         {
             if (Device->registerBases[i] != gcvNULL)
             {
@@ -1061,6 +1042,11 @@ gckGALDEVICE_Setup_ISR(
         gcmkONERROR(gcvSTATUS_GENERIC_IO);
     }
 
+    if (Device->isrInitializeds[gcvCORE_MAJOR] == gcvTRUE)
+    {
+        return gcvSTATUS_OK;
+    }
+
     /* Hook up the isr based on the irq line. */
 #ifdef FLAREON
     gc500_handle.dev_name  = "galcore interrupt service";
@@ -1117,6 +1103,11 @@ gckGALDEVICE_Setup_ISR_2D(
     if (Device->irqLines[gcvCORE_2D] < 0)
     {
         gcmkONERROR(gcvSTATUS_GENERIC_IO);
+    }
+
+    if (Device->isrInitializeds[gcvCORE_2D] == gcvTRUE)
+    {
+        return gcvSTATUS_OK;
     }
 
     /* Hook up the isr based on the irq line. */
@@ -1364,6 +1355,25 @@ gckGALDEVICE_Start_Threads(
 
         Device->threadCtxts[gcvCORE_MAJOR]          = task;
         Device->threadInitializeds[gcvCORE_MAJOR]   = gcvTRUE;
+
+#if gcdPOWEROFF_TIMEOUT
+        /* Start the kernel thread. */
+        task = kthread_run(threadRoutinePM, Device, "galcore pm thread");
+
+        if (IS_ERR(task))
+        {
+            gcmkTRACE_ZONE(
+                gcvLEVEL_ERROR, gcvZONE_DRIVER,
+                "%s(%d): Could not start the kernel thread.\n",
+                __FUNCTION__, __LINE__
+                );
+
+            gcmkONERROR(gcvSTATUS_GENERIC_IO);
+        }
+
+        Device->pmThreadCtxts[gcvCORE_MAJOR]          = task;
+        Device->pmThreadInitializeds[gcvCORE_MAJOR]   = gcvTRUE;
+#endif
     }
 
     if (Device->kernels[gcvCORE_2D] != gcvNULL)
@@ -1384,6 +1394,25 @@ gckGALDEVICE_Start_Threads(
 
         Device->threadCtxts[gcvCORE_2D]         = task;
         Device->threadInitializeds[gcvCORE_2D]  = gcvTRUE;
+
+#if gcdPOWEROFF_TIMEOUT
+        /* Start the kernel thread. */
+        task = kthread_run(threadRoutinePM_2D, Device, "galcore pm 2d thread");
+
+        if (IS_ERR(task))
+        {
+            gcmkTRACE_ZONE(
+                gcvLEVEL_ERROR, gcvZONE_DRIVER,
+                "%s(%d): Could not start the kernel thread.\n",
+                __FUNCTION__, __LINE__
+                );
+
+            gcmkONERROR(gcvSTATUS_GENERIC_IO);
+        }
+
+        Device->pmThreadCtxts[gcvCORE_2D]          = task;
+        Device->pmThreadInitializeds[gcvCORE_2D]   = gcvTRUE;
+#endif
     }
     else
     {
@@ -1453,7 +1482,7 @@ gckGALDEVICE_Stop_Threads(
 
     gcmkVERIFY_ARGUMENT(Device != NULL);
 
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         /* Stop the kernel threads. */
         if (Device->threadInitializeds[i])
@@ -1465,6 +1494,20 @@ gckGALDEVICE_Stop_Threads(
             Device->threadCtxts[i]        = gcvNULL;
             Device->threadInitializeds[i] = gcvFALSE;
         }
+
+#if gcdPOWEROFF_TIMEOUT
+        /* Stop the kernel threads. */
+        if (Device->pmThreadInitializeds[i])
+        {
+            gckHARDWARE hardware = Device->kernels[i]->hardware;
+            Device->killThread = gcvTRUE;
+            gckOS_ReleaseSemaphore(Device->os, hardware->powerOffSema);
+
+            kthread_stop(Device->pmThreadCtxts[i]);
+            Device->pmThreadCtxts[i]        = gcvNULL;
+            Device->pmThreadInitializeds[i] = gcvFALSE;
+        }
+#endif
     }
 
     gcmkFOOTER_NO();

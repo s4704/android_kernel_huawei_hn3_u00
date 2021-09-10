@@ -1,22 +1,18 @@
 /****************************************************************************
 *
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
+*    Copyright (c) 2005 - 2012 by Vivante Corp.  All rights reserved.
 *
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*    The material in this file is confidential and contains trade secrets
+*    of Vivante Corporation. This is proprietary information owned by
+*    Vivante Corporation. No part of this work may be disclosed,
+*    reproduced, copied, transmitted, or used in any way for any purpose,
+*    without the express written permission of Vivante Corporation.
 *
 *****************************************************************************/
+
+
+
+
 
 
 #include "gc_hal.h"
@@ -181,8 +177,7 @@ _FlushPipe(
                 ?   ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 3:3) - (0 ? 3:3) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 3:3) - (0 ? 3:3) + 1))))))) << (0 ? 3:3))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 3:3) - (0 ? 3:3) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 3:3) - (0 ? 3:3) + 1))))))) << (0 ? 3:3)))
                 :   ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 0:0) - (0 ? 0:0) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 0:0) - (0 ? 0:0) + 1))))))) << (0 ? 0:0))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 0:0) - (0 ? 0:0) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 0:0) - (0 ? 0:0) + 1))))))) << (0 ? 0:0)))
                   | ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 1:1) - (0 ? 1:1) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 1:1) - (0 ? 1:1) + 1))))))) << (0 ? 1:1))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 1:1) - (0 ? 1:1) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 1:1) - (0 ? 1:1) + 1))))))) << (0 ? 1:1)))
-                  | ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 2:2) - (0 ? 2:2) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 2:2) - (0 ? 2:2) + 1))))))) << (0 ? 2:2))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 2:2) - (0 ? 2:2) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 2:2) - (0 ? 2:2) + 1))))))) << (0 ? 2:2)))
-                  | ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 4:4) - (0 ? 4:4) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 4:4) - (0 ? 4:4) + 1))))))) << (0 ? 4:4))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 4:4) - (0 ? 4:4) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 4:4) - (0 ? 4:4) + 1))))))) << (0 ? 4:4)));
+                  | ((((gctUINT32) (0)) & ~(((gctUINT32) (((gctUINT32) ((((1 ? 2:2) - (0 ? 2:2) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 2:2) - (0 ? 2:2) + 1))))))) << (0 ? 2:2))) | (((gctUINT32) (0x1 & ((gctUINT32) ((((1 ? 2:2) - (0 ? 2:2) + 1) == 32) ? ~0 : (~(~0 << ((1 ? 2:2) - (0 ? 2:2) + 1))))))) << (0 ? 2:2)));
 
         /* Semaphore from FE to PE. */
         *buffer++
@@ -207,7 +202,6 @@ _FlushPipe(
     return 6;
 }
 
-#if !defined(VIVANTE_NO_3D)
 static gctSIZE_T
 _SemaphoreStall(
     IN gckCONTEXT Context,
@@ -243,7 +237,6 @@ _SemaphoreStall(
     /* Semaphore/stall takes 4 slots. */
     return 4;
 }
-#endif
 
 static gctSIZE_T
 _SwitchPipe(
@@ -472,11 +465,9 @@ _InitializeContextBuffer(
     index += _SwitchPipe(Context, index, gcvPIPE_3D);
 
     /* Current context pointer. */
-#if gcdDEBUG
+#if gcdDEBUG && 1
     index += _State(Context, index, 0x03850 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
 #endif
-
-    index += _FlushPipe(Context, index, gcvPIPE_3D);
 
     /* Global states. */
     index += _State(Context, index, 0x03814 >> 2, 0x00000001, 1, gcvFALSE, gcvFALSE);
@@ -547,7 +538,6 @@ _InitializeContextBuffer(
     index += _State(Context, index, 0x00A3C >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x00A80 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x00A84 >> 2, 0x00000000, 1, gcvTRUE, gcvFALSE);
-    index += _State(Context, index, 0x00A8C >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
 
     /* Setup states. */
     index += _State(Context, index, 0x00C00 >> 2, 0x00000000, 1, gcvTRUE, gcvFALSE);
@@ -621,10 +611,6 @@ _InitializeContextBuffer(
         index += _State(Context, index, 0x10180 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x10200 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x10280 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
-        for (i = 0; i < 256 / 16; i += 1)
-        {
-            index += _State(Context, index, (0x02C00 >> 2) + i * 16, 0x00000000, 14, gcvFALSE, gcvFALSE);
-        }
         index += _State(Context, index, 0x10300 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x10380 >> 2, 0x00321000, 32, gcvFALSE, gcvFALSE);
         index += _State(Context, index, 0x10400 >> 2, 0x00000000, 32, gcvFALSE, gcvFALSE);
@@ -695,11 +681,6 @@ _InitializeContextBuffer(
 	}
 	else if (Context->hardware->identity.instructionCount > 256)
 	{
-		/* New Shader instruction memory. */
-		index += _State(Context, index, 0x0085C >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
-		index += _State(Context, index, 0x0101C >> 2, 0x00000100, 1, gcvFALSE, gcvFALSE);
-		index += _CLOSE_RANGE();
-
 		/* VX instruction memory. */
 		for (i = 0;
 		     i < Context->hardware->identity.instructionCount << 2;
@@ -716,6 +697,7 @@ _InitializeContextBuffer(
     /* Store the index of the "XD" entry. */
     Context->entryOffsetXDFrom3D = index * gcmSIZEOF(gctUINT32);
 
+    index += _FlushPipe(Context, index, gcvPIPE_3D);
 
     /* Pixel Engine states. */
     index += _State(Context, index, 0x01400 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
@@ -740,7 +722,6 @@ _InitializeContextBuffer(
     index += _State(Context, index, 0x014B4 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x014A4 >> 2, 0x000E400C, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x01580 >> 2, 0x00000000, 3, gcvFALSE, gcvFALSE);
-    index += _State(Context, index, 0x014B8 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
 
     /* Composition states. */
     index += _State(Context, index, 0x03008 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
@@ -798,7 +779,6 @@ _InitializeContextBuffer(
     index += _State(Context, index, 0x01670 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x01674 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x016A4 >> 2, 0x00000000, 1, gcvFALSE, gcvTRUE);
-    index += _State(Context, index, 0x016AC >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x016A8 >> 2, 0x00000000, 1, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x01720 >> 2, 0x00000000, 8, gcvFALSE, gcvFALSE);
     index += _State(Context, index, 0x01740 >> 2, 0x00000000, 8, gcvFALSE, gcvTRUE);
@@ -875,26 +855,18 @@ _DestroyContext(
 {
     gceSTATUS status = gcvSTATUS_OK;
 
-    gcmkHEADER_ARG("Context=0x%08X", Context);
-
     if (Context != gcvNULL)
     {
         gcsCONTEXT_PTR bufferHead;
 
-        gcmkVERIFY_ARGUMENT((gctUINT)Context >= (gctUINT)0xC0000000);
-
         /* Free context buffers. */
         for (bufferHead = Context->buffer; Context->buffer != gcvNULL;)
         {
-            gcsCONTEXT_PTR buffer = gcvNULL;
-            gcsCONTEXT_PTR next = gcvNULL;
-
             /* Get a shortcut to the current buffer. */
-            buffer = Context->buffer;
-            gcmkVERIFY_ARGUMENT((gctUINT)buffer >= (gctUINT)0xC0000000);
+            gcsCONTEXT_PTR buffer = Context->buffer;
 
             /* Get the next buffer. */
-            next = buffer->next;
+            gcsCONTEXT_PTR next = buffer->next;
 
             /* Last item? */
             if (next == bufferHead)
@@ -917,22 +889,15 @@ _DestroyContext(
             {
 #if gcdVIRTUAL_COMMAND_BUFFER
                 gcmkONERROR(gckEVENT_DestroyVirtualCommandBuffer(
-                    Context->hardware->kernel->eventObj,
-                    Context->totalSize,
-                    buffer->physical,
-                    buffer->logical,
-                    gcvKERNEL_PIXEL
-                    ));
-
 #else
-                gcmkONERROR(gckEVENT_FreeContiguousMemory(
+                gcmkONERROR(gckEVENT_FreeNonPagedMemory(
+#endif
                     Context->hardware->kernel->eventObj,
                     Context->totalSize,
                     buffer->physical,
                     buffer->logical,
                     gcvKERNEL_PIXEL
                     ));
-#endif
 
                 buffer->logical = gcvNULL;
             }
@@ -1173,21 +1138,15 @@ gckCONTEXT_Construct(
 #if gcdVIRTUAL_COMMAND_BUFFER
         gcmkONERROR(gckKERNEL_AllocateVirtualCommandBuffer(
             context->hardware->kernel,
-            gcvFALSE,
-            &context->totalSize,
-            &buffer->physical,
-            &pointer
-            ));
-
 #else
-        gcmkONERROR(gckOS_AllocateContiguous(
+        gcmkONERROR(gckOS_AllocateNonPagedMemory(
             Os,
+#endif
             gcvFALSE,
             &context->totalSize,
             &buffer->physical,
             &pointer
             ));
-#endif
 
         buffer->logical = pointer;
 
@@ -1266,11 +1225,11 @@ gckCONTEXT_Construct(
             }
 
             /* Copy the current context. */
-            gckOS_MemCopy(
+            gcmkONERROR(gckOS_MemCopy(
                 tempContext->logical,
                 currContext->logical,
                 context->totalSize
-                );
+                ));
 
             /* Get the next context buffer. */
             tempContext = tempContext->next;
@@ -1450,7 +1409,7 @@ gckCONTEXT_Update(
             gcmkONERROR(gckKERNEL_OpenUserData(
                 kernel, needCopy,
                 Context->recordArray,
-                gcmUINT64_TO_PTR(kDelta->recordArray), Context->recordArraySize,
+                kDelta->recordArray, Context->recordArraySize,
                 (gctPOINTER *) &recordArray
                 ));
 
@@ -1559,13 +1518,13 @@ gckCONTEXT_Update(
             gcmkASSERT(kDelta->refCount >= 0);
 
             /* Get the next state delta. */
-            nDelta = gcmUINT64_TO_PTR(kDelta->next);
+            nDelta = kDelta->next;
 
             /* Get access to the state records. */
             gcmkONERROR(gckKERNEL_CloseUserData(
                 kernel, needCopy,
                 gcvFALSE,
-                gcmUINT64_TO_PTR(kDelta->recordArray), Context->recordArraySize,
+                kDelta->recordArray, Context->recordArraySize,
                 (gctPOINTER *) &recordArray
                 ));
 
@@ -1718,7 +1677,7 @@ OnError:
         gcmkVERIFY_OK(gckKERNEL_CloseUserData(
             kernel, needCopy,
             gcvFALSE,
-            gcmUINT64_TO_PTR(kDelta->recordArray), Context->recordArraySize,
+            kDelta->recordArray, Context->recordArraySize,
             (gctPOINTER *) &recordArray
             ));
 	}

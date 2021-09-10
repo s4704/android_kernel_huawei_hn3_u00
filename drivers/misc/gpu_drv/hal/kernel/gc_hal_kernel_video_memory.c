@@ -1,22 +1,16 @@
 /****************************************************************************
 *
-*    Copyright (C) 2005 - 2013 by Vivante Corp.
+*    Copyright (c) 2005 - 2012 by Vivante Corp.  All rights reserved.
 *
-*    This program is free software; you can redistribute it and/or modify
-*    it under the terms of the GNU General Public License as published by
-*    the Free Software Foundation; either version 2 of the license, or
-*    (at your option) any later version.
-*
-*    This program is distributed in the hope that it will be useful,
-*    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-*    GNU General Public License for more details.
-*
-*    You should have received a copy of the GNU General Public License
-*    along with this program; if not write to the Free Software
-*    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*    The material in this file is confidential and contains trade secrets
+*    of Vivante Corporation. This is proprietary information owned by
+*    Vivante Corporation. No part of this work may be disclosed,
+*    reproduced, copied, transmitted, or used in any way for any purpose,
+*    without the express written permission of Vivante Corporation.
 *
 *****************************************************************************/
+
+
 
 
 #include "gc_hal_kernel_precomp.h"
@@ -88,7 +82,6 @@ _Split(
     node->VidMem.alignment = 0;
     node->VidMem.locked    = 0;
     node->VidMem.memory    = Node->VidMem.memory;
-    node->VidMem.pool      = Node->VidMem.pool;
     node->VidMem.physical  = Node->VidMem.physical;
 #ifdef __QNXNTO__
 #if gcdUSE_VIDMEM_PER_PID
@@ -242,8 +235,9 @@ gckVIDMEM_ConstructVirtual(
     node->Virtual.kernel        = Kernel;
     node->Virtual.contiguous    = Contiguous;
     node->Virtual.logical       = gcvNULL;
+    node->Virtual.id            = 0;
 
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         node->Virtual.lockeds[i]        = 0;
         node->Virtual.pageTables[i]     = gcvNULL;
@@ -257,7 +251,7 @@ gckVIDMEM_ConstructVirtual(
 #ifdef __QNXNTO__
     node->Virtual.next          = gcvNULL;
     node->Virtual.freePending   = gcvFALSE;
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         node->Virtual.unlockPendings[i] = gcvFALSE;
     }
@@ -280,16 +274,16 @@ gckVIDMEM_ConstructVirtual(
 
 #ifdef __QNXNTO__
     /* Register. */
-#if gcdENABLE_VG
-    if (Kernel->core != gcvCORE_VG)
-#endif
-    {
-        gckMMU_InsertNode(Kernel->mmu, node);
-    }
+    gckMMU_InsertNode(Kernel->mmu, node);
 #endif
 
+    /* Allocate a integer id. */
+    gcmkONERROR(gckOS_AllocateIntergerId(gcvNULL,
+                                         node,
+                                         &node->Virtual.id));
+
     /* Return pointer to the gcuVIDMEM_NODE union. */
-    *Node = node;
+    *Node = (gcuVIDMEM_NODE *)node->Virtual.id;
 
     gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_VIDMEM,
                    "Created virtual node 0x%x for %u bytes @ 0x%x",
@@ -307,6 +301,13 @@ OnError:
         {
             /* Destroy the mutex. */
             gcmkVERIFY_OK(gckOS_DeleteMutex(os, node->Virtual.mutex));
+        }
+
+        if (node->Virtual.id)
+        {
+            /* Destroy id. */
+            gcmkVERIFY_OK(gckOS_DestroyIntegerId(gcvNULL,
+                                                 node->Virtual.id));
         }
 
         /* Free the structure. */
@@ -352,19 +353,14 @@ gckVIDMEM_DestroyVirtual(
 
 #ifdef __QNXNTO__
     /* Unregister. */
-#if gcdENABLE_VG
-    if (Node->Virtual.kernel->core != gcvCORE_VG)
-#endif
-    {
-        gcmkVERIFY_OK(
-                gckMMU_RemoveNode(Node->Virtual.kernel->mmu, Node));
-    }
+    gcmkVERIFY_OK(
+            gckMMU_RemoveNode(Node->Virtual.kernel->mmu, Node));
 #endif
 
     /* Delete the mutex. */
     gcmkVERIFY_OK(gckOS_DeleteMutex(os, Node->Virtual.mutex));
 
-    for (i = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0; i < gcdCORE_COUNT; i++)
     {
         if (Node->Virtual.pageTables[i] != gcvNULL)
         {
@@ -386,6 +382,11 @@ gckVIDMEM_DestroyVirtual(
             }
         }
     }
+
+    /* Destroy the integer id. */
+    gcmkVERIFY_OK(
+        gckOS_DestroyIntegerId(gcvNULL,
+                               Node->Virtual.id));
 
     /* Delete the gcuVIDMEM_NODE union. */
     gcmkVERIFY_OK(gcmkOS_SAFE_FREE(os, Node));
@@ -521,7 +522,6 @@ gckVIDMEM_Construct(
         node->VidMem.bytes     = bytes;
         node->VidMem.alignment = 0;
         node->VidMem.physical  = 0;
-        node->VidMem.pool      = gcvPOOL_UNKNOWN;
 
         node->VidMem.locked    = 0;
 
@@ -1027,8 +1027,15 @@ gckVIDMEM_AllocateLinear(
     )
     {
         /* The left memory is for small memory.*/
-        status = gcvSTATUS_OUT_OF_MEMORY;
-        goto OnError;
+        gcmkONERROR(gcvSTATUS_OUT_OF_MEMORY);
+    }
+#endif
+
+#if gcdSMALL_BLOCK_SIZE
+    if (Memory->freeBytes < (Memory->bytes/gcdRATIO_FOR_SMALL_MEMORY) && Bytes > gcdSMALL_BLOCK_SIZE)
+    {
+        /* The left memory is for small memory.*/
+        gcmkONERROR(gcvSTATUS_OUT_OF_MEMORY);
     }
 #endif
 
@@ -1197,8 +1204,13 @@ gckVIDMEM_AllocateLinear(
     /* Release the mutex. */
     gcmkVERIFY_OK(gckOS_ReleaseMutex(Memory->os, Memory->mutex));
 
+    /* Allocate integer id.*/
+    gcmkVERIFY_OK(gckOS_AllocateIntergerId(gcvNULL,
+                                           node,
+                                           &node->VidMem.id));
+
     /* Return the pointer to the node. */
-    *Node = node;
+    *Node = (gcuVIDMEM_NODE_PTR)node->VidMem.id;
 
     gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_VIDMEM,
                    "Allocated %u bytes @ 0x%x [0x%08X]",
@@ -1236,7 +1248,7 @@ OnError:
 **      Nothing.
 */
 gceSTATUS
-gckVIDMEM_Free(
+_gckVIDMEM_Free(
     IN gcuVIDMEM_NODE_PTR Node
     )
 {
@@ -1245,7 +1257,7 @@ gckVIDMEM_Free(
     gckVIDMEM memory = gcvNULL;
     gcuVIDMEM_NODE_PTR node;
     gctBOOL mutexAcquired = gcvFALSE;
-    gckOS os = gcvNULL;
+    gckOS os = gcvFALSE;
     gctBOOL acquired = gcvFALSE;
     gctINT32 i, totalLocked;
 
@@ -1315,14 +1327,9 @@ gckVIDMEM_Free(
                 Node->VidMem.kernelVirtual = gcvNULL;
             }
 #endif
-
-            /* Check if Node is already freed. */
-            if (Node->VidMem.nextFree)
-            {
-                /* Node is alread freed. */
-                gcmkONERROR(gcvSTATUS_INVALID_DATA);
-            }
-
+			/* Destory integer id. */
+			gcmkVERIFY_OK(gckOS_DestroyIntegerId(gcvNULL, Node->VidMem.id));
+			
             /* Update the number of free bytes. */
             memory->freeBytes += Node->VidMem.bytes;
 
@@ -1330,6 +1337,9 @@ gckVIDMEM_Free(
             for (node = Node->VidMem.next;
                  node != gcvNULL && node->VidMem.nextFree == gcvNULL;
                  node = node->VidMem.next) ;
+
+            if (node == gcvNULL)
+                gcmkONERROR(gcvSTATUS_INVALID_OBJECT);
 
             /* Insert this node in the free list. */
             Node->VidMem.nextFree = node;
@@ -1391,7 +1401,7 @@ gckVIDMEM_Free(
 
     acquired = gcvTRUE;
 
-    for (i = 0, totalLocked = 0; i < gcdMAX_GPU_COUNT; i++)
+    for (i = 0, totalLocked = 0; i < gcdCORE_COUNT; i++)
     {
         totalLocked += Node->Virtual.lockeds[i];
     }
@@ -1443,6 +1453,22 @@ OnError:
     return status;
 }
 
+gceSTATUS
+gckVIDMEM_Free(
+    IN gcuVIDMEM_NODE_PTR Node
+    )
+{
+    gceSTATUS status;
+
+    gcmkONERROR(
+        gckOS_QueryIntegerId(gcvNULL, (gctUINT32)Node, (gctPOINTER *)&Node));
+
+    gcmkONERROR(_gckVIDMEM_Free(Node));
+
+    return gcvSTATUS_OK;
+OnError:
+    return status;
+}
 
 #ifdef __QNXNTO__
 /*******************************************************************************
@@ -1513,7 +1539,7 @@ gckVIDMEM_FreeHandleMemory(
                     byteCount += node->VidMem.bytes;
 
                     /* Free video memory. */
-                    gcmkVERIFY_OK(gckVIDMEM_Free(node));
+                    gcmkVERIFY_OK(_gckVIDMEM_Free(node));
 
                     /*
                      * Freeing may cause a merge which will invalidate our iteration.
@@ -1582,7 +1608,6 @@ _NeedVirtualMapping(
     gctUINT32 end;
     gcePOOL pool;
     gctUINT32 offset;
-    gctUINT32 baseAddress;
 
     gcmkHEADER_ARG("Node=0x%X", Node);
 
@@ -1590,7 +1615,7 @@ _NeedVirtualMapping(
     gcmkVERIFY_ARGUMENT(Kernel != gcvNULL);
     gcmkVERIFY_ARGUMENT(Node != gcvNULL);
     gcmkVERIFY_ARGUMENT(NeedMapping != gcvNULL);
-    gcmkVERIFY_ARGUMENT(Core < gcdMAX_GPU_COUNT);
+    gcmkVERIFY_ARGUMENT(Core < gcdCORE_COUNT);
 
     if (Node->Virtual.contiguous)
     {
@@ -1602,16 +1627,10 @@ _NeedVirtualMapping(
         else
 #endif
         {
-            /* Convert logical address into a physical address. */
-            gcmkONERROR(
-                gckOS_GetPhysicalAddress(Kernel->os, Node->Virtual.logical, &phys));
-
-            gcmkONERROR(gckOS_GetBaseAddress(Kernel->os, &baseAddress));
-
-            gcmkASSERT(phys >= baseAddress);
-
-            /* Subtract baseAddress to get a GPU address used for programming. */
-            phys -= baseAddress;
+            /* For cores which can't access all physical address. */
+            gcmkONERROR(gckOS_GetPhysicalAddress(Kernel->os,
+                        Node->Virtual.logical,
+                        &phys));
 
             /* If part of region is belong to gcvPOOL_VIRTUAL,
             ** whole region has to be mapped. */
@@ -1669,12 +1688,14 @@ gckVIDMEM_Lock(
     gctBOOL locked = gcvFALSE;
     gckOS os = gcvNULL;
     gctBOOL needMapping;
-    gctUINT32 baseAddress;
 
     gcmkHEADER_ARG("Node=0x%x", Node);
 
     /* Verify the arguments. */
     gcmkVERIFY_ARGUMENT(Address != gcvNULL);
+
+    gcmkONERROR(
+        gckOS_QueryIntegerId(gcvNULL, (gctUINT32)Node, (gctPOINTER *)&Node));
 
     if ((Node == gcvNULL)
     ||  (Node->VidMem.memory == gcvNULL)
@@ -1696,7 +1717,7 @@ gckVIDMEM_Lock(
         /* Increment the lock count. */
         Node->VidMem.locked ++;
 
-        /* Return the physical address of the node. */
+        /* Return the address of the node. */
 #if !gcdUSE_VIDMEM_PER_PID
         *Address = Node->VidMem.memory->baseAddress
                  + Node->VidMem.offset
@@ -1704,20 +1725,6 @@ gckVIDMEM_Lock(
 #else
         *Address = Node->VidMem.physical;
 #endif
-
-        /* Get hardware specific address. */
-#if gcdENABLE_VG
-        if (Kernel->vg == gcvNULL)
-#endif
-        {
-            if (Kernel->hardware->mmuVersion == 0)
-            {
-                /* Convert physical to GPU address for old mmu. */
-                gcmkONERROR(gckOS_GetBaseAddress(Kernel->os, &baseAddress));
-                gcmkASSERT(*Address > baseAddress);
-                *Address -= baseAddress;
-            }
-        }
 
         gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_VIDMEM,
                       "Locked node 0x%x (%d) @ 0x%08X",
@@ -1740,11 +1747,6 @@ gckVIDMEM_Lock(
         /* Grab the mutex. */
         gcmkONERROR(gckOS_AcquireMutex(os, Node->Virtual.mutex, gcvINFINITE));
         acquired = gcvTRUE;
-
-#if gcdPAGED_MEMORY_CACHEABLE
-        /* Force video memory cacheable. */
-        Cacheable = gcvTRUE;
-#endif
 
         gcmkONERROR(
             gckOS_LockPages(os,
@@ -1781,21 +1783,10 @@ gckVIDMEM_Lock(
 
             if (needMapping == gcvFALSE)
             {
-                /* Get hardware specific address. */
-#if gcdENABLE_VG
-                if (Kernel->vg != gcvNULL)
-                {
-                    gcmkONERROR(gckVGHARDWARE_ConvertLogical(Kernel->vg->hardware,
-                                Node->Virtual.logical,
-                                &Node->Virtual.addresses[Kernel->core]));
-                }
-                else
-#endif
-                {
-                    gcmkONERROR(gckHARDWARE_ConvertLogical(Kernel->hardware,
-                                Node->Virtual.logical,
-                                &Node->Virtual.addresses[Kernel->core]));
-                }
+                /* Get physical address directly */
+                 gcmkONERROR(gckOS_GetPhysicalAddress(os,
+                             Node->Virtual.logical,
+                             &Node->Virtual.addresses[Kernel->core]));
             }
             else
             {
@@ -1841,11 +1832,7 @@ gckVIDMEM_Lock(
 #endif
 
 #if gcdENABLE_VG
-                if (Kernel->core == gcvCORE_VG)
-                {
-                    gcmkONERROR(gckVGMMU_Flush(Kernel->vg->mmu));
-                }
-                else
+                if (Kernel->core != gcvCORE_VG)
 #endif
                 {
                     gcmkONERROR(gckMMU_Flush(Kernel->mmu));
@@ -1967,6 +1954,9 @@ gckVIDMEM_Unlock(
     gcmkHEADER_ARG("Node=0x%x Type=%d *Asynchroneous=%d",
                    Node, Type, gcmOPT_VALUE(Asynchroneous));
 
+    gcmkONERROR(
+        gckOS_QueryIntegerId(gcvNULL, (gctUINT32)Node, (gctPOINTER *)&Node));
+
     /* Verify the arguments. */
     if ((Node == gcvNULL)
     ||  (Node->VidMem.memory == gcvNULL)
@@ -2023,7 +2013,7 @@ gckVIDMEM_Unlock(
             gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_VIDMEM,
                            "Deferred-freeing Node 0x%x.",
                            Node);
-            gcmkONERROR(gckVIDMEM_Free(Node));
+            gcmkONERROR(_gckVIDMEM_Free(Node));
         }
     }
 
@@ -2093,7 +2083,7 @@ gckVIDMEM_Unlock(
 #endif
             }
 
-            for (i = 0, totalLocked = 0; i < gcdMAX_GPU_COUNT; i++)
+            for (i = 0, totalLocked = 0; i < gcdCORE_COUNT; i++)
             {
                 totalLocked += Node->Virtual.lockeds[i];
             }
@@ -2156,9 +2146,6 @@ gckVIDMEM_Unlock(
 
             if (!Node->Virtual.contiguous
             &&  (Node->Virtual.lockeds[Kernel->core] == 1)
-#if gcdENABLE_VG
-            && (Kernel->vg == gcvNULL)
-#endif
             )
             {
                 if (Type == gcvSURF_BITMAP)
